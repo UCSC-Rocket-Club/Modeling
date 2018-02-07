@@ -495,6 +495,18 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
         
         figure(figsize=(10, 15))
         subplot(3,1,1)
+        plot(t_arr[0:-3], signal_h_arr[0:-1], '-', color = 'black', label = 'Altitude Signal')
+        plot(t_arr[0:-3], signal_v_arr[0:-1], '-', color = 'tomato', label = 'Velocity Signal')
+        plot(t_arr[0:-3], signal_a_arr[0:-1], '-', color = 'blue', label = 'Acceleration Signal')
+        xlabel('Time [s]')
+        ylabel('Signal')
+        title('PID Signals')
+        grid()
+        legend(loc = 'best')
+        xlim(0, time_array[-1]+0.1)
+        
+        figure(figsize=(10, 15))
+        subplot(3,1,1)
         plot(t_arr,array(h_arr), '-', color = 'black', label = 'Trajectory')
         plot(nom_t,array(nom_h), '--', color = 'tomato', label = 'Nominal Trajectory')
         grid()
