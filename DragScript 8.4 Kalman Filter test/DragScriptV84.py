@@ -109,6 +109,10 @@ def num_solver(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_re
         M=0.0289644     #Molar mass of air kg/mol
         T=temp+273.15   #temperature of the air at launch altitude in Kelvin
         return p_i*e**(-1*(g*M*h)/(R*T))
+    
+    
+    
+    
 
     #arrays to push results to
 
@@ -378,9 +382,7 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
         
     
     def move_ADAS(t):
-        if t < burn_time:
-            ADAS_deployment_arr.append(0)
-            return
+        
         if (t/time_step)%(update_interval/time_step) == 0:    #if it is time to update the motor configuration
             av_depl = average(wanted_deployments[last_seized_index[-1]:-1])
             last_seized_index.append(int(t/time_step))              #update for the next iteration
@@ -420,17 +422,37 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
         M=0.0289644     #Molar mass of air kg/mol
         T=temp+273.15   #temperature of the air at launch altitude in Kelvin
         return p_i*e**(-1*(g*M*h)/(R*T))
-
+    
+    
+    ############################     KALMAN FILTER        ################################
+    
+    #variables
+    
+    mass =  #constant?
+    
+    predict_matrix[[1, delta_t, 0.5*delta_t^2],[0, 1, delta_t], [0, 0, 1]]    
+    
+    Kalman_state = [ , , ]     #[position, velocity, acceleration]
+    
+    #matrices
+    
+        #prediction matrix should be position+vel*t+0.5*acc*t^2 with the updated acceleration
+    
+    def predict( ):
+        
+        kalman_acc = acc_step(kalman_state[0], kalamn_state[1], kalman_state[2], mass)  #this calculates the acceleration 
+        
+        
+    def update( ):
+        
+        
+    
+    
     #arrays to push results to
 
     h_arr = [h0]
     v_arr = [v0]
     a_arr = [0]
-    
-    h_arr_noised = [h0]   #
-    v_arr_noised = [v0]   #
-    a_arr_noised = [0]    #1.08
-    
     m_arr = [Wet_mass]
     time_array = [0]
     drag_curve_arr = [0]
@@ -449,22 +471,18 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
     
         hi = height_step(h_arr[i-1], v_arr[i-1])
         h_arr.append(hi)
-        h_arr_noised.append(hi)
     
         vi = velocity_step(v_arr[i-1], a_arr[i-1])
         v_arr.append(vi)
-        v_arr_noised.append(vi)
         
         ai = acc_step(h_arr[i-1], v_arr[i-1], m_arr[i-1], time_array[i-1])
         a_arr.append(ai)
-        a_arr_noised.append(ai+random.normal(0,0.5))
     
         mi = mass_step(m_arr[i-1], ti)
         m_arr.append(mi)
         
         #update ADAS calculation
-        #update_PID(h_arr[i-1], v_arr[i-1], a_arr[i-1], time_array[i-1])
-        update_PID(h_arr_noised[i-1], v_arr_noised[i-1], a_arr_noised[i-1], time_array[i-1])
+        update_PID(h_arr[i-1], v_arr[i-1], a_arr[i-1], time_array[i-1])
         #move motor
         move_ADAS(ti)
     
@@ -480,22 +498,18 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
     
         hi = height_step(h_arr[i-1], v_arr[i-1])
         h_arr.append(hi)
-        h_arr_noised.append(hi+random.normal(0,1))
     
         vi = velocity_step(v_arr[i-1], a_arr[i-1])
         v_arr.append(vi)
-        v_arr_noised.append(vi+random.normal(0,1))
         
         ai = acc_step(h_arr[i-1], v_arr[i-1], m_arr[i-1], time_array[i-1])
         a_arr.append(ai)
-        a_arr_noised.append(ai+random.normal(0,0.5))
     
         mi = Dry_mass
         m_arr.append(mi)
         
         #update ADAS calculation
-        #update_PID(h_arr[i-1], v_arr[i-1], a_arr[i-1], time_array[i-1])
-        update_PID(h_arr_noised[i-1], v_arr_noised[i-1], a_arr_noised[i-1], time_array[i-1])
+        update_PID(h_arr[i-1], v_arr[i-1], a_arr[i-1], time_array[i-1])
         #move motor
         move_ADAS(ti)
     
@@ -560,7 +574,6 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
         figure(figsize=(10, 15))
         subplot(3,1,1)
         plot(t_arr,array(h_arr), '-', color = 'black', label = 'Trajectory')
-        plot(t_arr,array(h_arr_noised), '-', color = 'black', label = 'Noised Trajectory')
         plot(nom_t,array(nom_h), '--', color = 'tomato', label = 'Nominal Trajectory')
         grid()
         title('Trajectory')
@@ -578,7 +591,6 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
 
         subplot(3,1,2)
         plot(t_arr, array(v_arr), '-', color = 'black', label = 'Velocity')
-        plot(t_arr, array(v_arr_noised), '-', color = 'blue', label = 'Noised Velocity')
         plot(nom_t, nom_v, '--', color = 'tomato', label = 'Nominal Velocity')
         grid()
         title('Velocity')
@@ -595,7 +607,6 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
         
         subplot(3,1,3)
         plot(t_arr[0:-1], a_arr[0:-1], '-', color = 'black', label = 'Acceleration')
-        plot(t_arr[0:-1], a_arr_noised[0:-1], '-', color = 'blue', label = 'Noised Acceleration')
         plot(nom_t, nom_a, '--', color = 'tomato', label = 'Nominal Acceleration')
         xlabel('Time [s]')
         ylabel('Acceleration [m/sec^2]')

@@ -255,6 +255,6 @@ def num_solver(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_re
         legend(loc = 'best')
         xlim(0, time_array[-1]+0.1)
     
-    return t_arr, v_arr, a_arr, h_arr, m_arr, ADAS_deployment_arr, round(h_arr[-1], 2), round(v_arr[c], 2)
+    return t_arr, v_arr, a_arr, h_arr, m_arr, ADAS_deployment_arr, round(h_arr[-1], 2), round(v_arr[c], 2), c
 
 

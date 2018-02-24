@@ -101,6 +101,13 @@ def num_solver(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_re
     def acc_step(hi, vi, mi, ti):
         return -g - drag_f * drag_curve(hi, vi, ti)/mi + thrust_function(ti)/mi
     
+    def jerk_step(index):
+        if index > 1:
+            jerk = (a_arr[index]-a_arr[index-1])/time_step
+        else:
+            jerk = 0
+        return jerk
+    
     def mass_step(mi, t): 
         return mi + (-mass_flow_rate(t))
     
@@ -115,6 +122,7 @@ def num_solver(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_re
     h_arr = [h0]
     v_arr = [v0]
     a_arr = [0]
+    j_arr = [0]
     m_arr = [Wet_mass]
     time_array = [0]
     drag_curve_arr = [0]
@@ -139,6 +147,9 @@ def num_solver(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_re
         
         ai = acc_step(h_arr[i-1], v_arr[i-1], m_arr[i-1], time_array[i-1])
         a_arr.append(ai)
+        
+        ji = jerk_step(i)
+        j_arr.append(ji)
     
         mi = mass_step(m_arr[i-1], ti)
         m_arr.append(mi)
@@ -161,6 +172,9 @@ def num_solver(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_re
         
         ai = acc_step(h_arr[i-1], v_arr[i-1], m_arr[i-1], time_array[i-1])
         a_arr.append(ai)
+        
+        ji = jerk_step(i)
+        j_arr.append(ji)
     
         mi = Dry_mass
         m_arr.append(mi)
@@ -254,15 +268,15 @@ def num_solver(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_re
         legend(loc = 'best')
         xlim(0, time_array[-1]+0.1)
     
-    return t_arr, v_arr, a_arr, h_arr, m_arr, ADAS_deployment_arr, round(h_arr[-1], 2), round(v_arr[c], 2)
+    return t_arr, v_arr, a_arr, j_arr, h_arr, m_arr, ADAS_deployment_arr, round(h_arr[-1], 2), round(v_arr[c], 2)
 
 #################################################################################################################################################################################################################################################################################################################################################################################################################################
 #################################################################################################################################################################################################################################################################################################################################################################################################################################
 #################################################################################################################################################################################################################################################################################################################################################################################################################################
 
-def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp, burn_time, max_deploy, t_start, t_deploy, plots, drag_f, k_height, k_vel, k_acc, PID_scale, ADAS_max_speed, update_interval):
+def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp, burn_time, max_deploy, t_start, t_deploy, plots, drag_f, k_height, k_vel, k_acc, k_jerk, PID_scale, ADAS_max_speed, update_interval, acc_noise, vel_noise, h_noise):
     
-    nom_t, nom_v, nom_a, nom_h, nom_m, nom_ADAS, nom_apogee, nom_v_MECO = num_solver(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp, burn_time, max_deploy, t_start, t_deploy, 0, drag_f)
+    nom_t, nom_v, nom_a, nom_j, nom_h, nom_m, nom_ADAS, nom_apogee, nom_v_MECO = num_solver(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp, burn_time, max_deploy, t_start, t_deploy, 0, drag_f)
     #calculate the nominal flight path
     
     
@@ -324,6 +338,7 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
     signal_h_arr = []
     signal_v_arr = []
     signal_a_arr = []
+    signal_j_arr = []
     
     max_index = len(nom_t)-1
     
@@ -341,7 +356,7 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
     def air_drag(hi, vi, f): #f is the angle
         return drag_function(vi, f) * air_pressure(hi, rho)/1.225
     
-    def update_PID(hi, vi, ai, t):
+    def update_PID(hi, vi, ai, ji, t):
         prev_deployment = ADAS_deployment_arr[-1]
         if t<=t_start:
             deployment = 0
@@ -351,15 +366,18 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
                 signal_h = hi-nom_h[index]
                 signal_v = vi-nom_v[index]
                 signal_a = ai-nom_a[index]
+                signal_j = (ji-nom_j[index])
             else:
                 signal_h = 0
                 signal_v = 0
                 signal_a = 0
+                signal_j = 0
             signal_h_arr.append(signal_h)
             signal_v_arr.append(signal_v)
             signal_a_arr.append(signal_a)
+            signal_j_arr.append(signal_j)
             
-            total_signal = (signal_h*k_height+signal_v*k_vel+signal_a*k_acc)*PID_scale
+            total_signal = (signal_h*k_height+signal_v*k_vel+signal_a*k_acc+signal_j*k_jerk)*PID_scale
             
             deployment = total_signal
         '''
@@ -412,6 +430,13 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
     def acc_step(hi, vi, mi, ti):
         return -g - drag_f * drag_curve(hi, vi, ti)/mi + thrust_function(ti)/mi
     
+    def jerk_step(index):
+        if index > 1:
+            jerk = (a_arr[index]-a_arr[index-1])/time_step
+        else:
+            jerk = 0
+        return jerk
+    
     def mass_step(mi, t): 
         return mi + (-mass_flow_rate(t))
     
@@ -426,10 +451,12 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
     h_arr = [h0]
     v_arr = [v0]
     a_arr = [0]
+    j_arr = [0]
     
-    h_arr_noised = [h0]   #
-    v_arr_noised = [v0]   #
-    a_arr_noised = [0]    #1.08
+    h_arr_noised = [h0]   
+    v_arr_noised = [v0]   
+    a_arr_noised = [0]    
+    j_arr_noised = [0]
     
     m_arr = [Wet_mass]
     time_array = [0]
@@ -449,22 +476,26 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
     
         hi = height_step(h_arr[i-1], v_arr[i-1])
         h_arr.append(hi)
-        h_arr_noised.append(hi)
+        h_arr_noised.append(hi + random.normal(0, h_noise))
     
         vi = velocity_step(v_arr[i-1], a_arr[i-1])
         v_arr.append(vi)
-        v_arr_noised.append(vi)
+        v_arr_noised.append(vi + random.normal(0, vel_noise))
         
         ai = acc_step(h_arr[i-1], v_arr[i-1], m_arr[i-1], time_array[i-1])
         a_arr.append(ai)
-        a_arr_noised.append(ai+random.normal(0,0.5))
+        a_arr_noised.append(ai + random.normal(0, acc_noise))
+        
+        ji = jerk_step(i)
+        j_arr.append(ji)
+        j_arr_noised.append(ji)
     
         mi = mass_step(m_arr[i-1], ti)
         m_arr.append(mi)
         
         #update ADAS calculation
         #update_PID(h_arr[i-1], v_arr[i-1], a_arr[i-1], time_array[i-1])
-        update_PID(h_arr_noised[i-1], v_arr_noised[i-1], a_arr_noised[i-1], time_array[i-1])
+        update_PID(h_arr_noised[i-1], v_arr_noised[i-1], a_arr_noised[i-1], j_arr_noised[i-1], time_array[i-1])
         #move motor
         move_ADAS(ti)
     
@@ -480,22 +511,26 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
     
         hi = height_step(h_arr[i-1], v_arr[i-1])
         h_arr.append(hi)
-        h_arr_noised.append(hi+random.normal(0,1))
+        h_arr_noised.append(hi + random.normal(0, h_noise))
     
         vi = velocity_step(v_arr[i-1], a_arr[i-1])
         v_arr.append(vi)
-        v_arr_noised.append(vi+random.normal(0,1))
+        v_arr_noised.append(vi + random.normal(0, vel_noise))
         
         ai = acc_step(h_arr[i-1], v_arr[i-1], m_arr[i-1], time_array[i-1])
         a_arr.append(ai)
-        a_arr_noised.append(ai+random.normal(0,0.5))
+        a_arr_noised.append(ai + random.normal(0, acc_noise))
+        
+        ji = jerk_step(i)
+        j_arr.append(ji)
+        j_arr_noised.append(ji)
     
         mi = Dry_mass
         m_arr.append(mi)
         
         #update ADAS calculation
         #update_PID(h_arr[i-1], v_arr[i-1], a_arr[i-1], time_array[i-1])
-        update_PID(h_arr_noised[i-1], v_arr_noised[i-1], a_arr_noised[i-1], time_array[i-1])
+        update_PID(h_arr_noised[i-1], v_arr_noised[i-1], a_arr_noised[i-1], j_arr_noised[i-1], time_array[i-1])
         #move motor
         move_ADAS(ti)
     
@@ -523,6 +558,15 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
     """
     t_arr = linspace(0,time_step*(len(h_arr)+1),len(h_arr))  #check
 
+    
+    def multiply_arr(arr, const):
+        new_arr = []
+        for i in range(0, len(arr)-1):
+            new_arr.append(arr[i]*const)
+        return new_arr
+    
+    
+    
     if plots:
         '''
         figure(figsize=(10, 15))
@@ -547,9 +591,16 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
         
         figure(figsize=(10, 15))
         subplot(3,1,1)
-        plot(t_arr[0:-3], signal_h_arr[0:-1], '-', color = 'black', label = 'Altitude Signal')
-        plot(t_arr[0:-3], signal_v_arr[0:-1], '-', color = 'tomato', label = 'Velocity Signal')
-        plot(t_arr[0:-3], signal_a_arr[0:-1], '-', color = 'blue', label = 'Acceleration Signal')
+        
+        height_plot = multiply(signal_h_arr, k_height)
+        vel_plot = multiply(signal_v_arr, k_vel)
+        acc_plot = multiply(signal_a_arr, k_acc)
+        jerk_plot = multiply(signal_j_arr, k_jerk)
+        
+        plot(t_arr[0:-3], height_plot[0:-1], '-', color = 'black', label = 'Altitude Signal')
+        plot(t_arr[0:-3], vel_plot[0:-1], '-', color = 'tomato', label = 'Velocity Signal')
+        plot(t_arr[0:-3], acc_plot[0:-1], '-', color = 'blue', label = 'Acceleration Signal')
+        plot(t_arr[0:-3], jerk_plot[0:-1], '-', color = 'forestgreen', label = 'Jerk Signal')
         xlabel('Time [s]')
         ylabel('Signal')
         title('PID Signals')
@@ -604,6 +655,18 @@ def PID(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_res, temp
         legend(loc = 'best')
         xlim(0, time_array[-1]+0.1)
         
+        figure(figsize=(10, 15))
+        subplot(3,1,2)
+        plot(t_arr[0:-1], j_arr[0:-1], '-', color = 'black', label = 'Jerk')
+        #plot(t_arr[0:-1], a_arr_noised[0:-1], '-', color = 'blue', label = 'Noised Acceleration')
+        plot(nom_t, nom_j, '--', color = 'tomato', label = 'Nominal Jerk')
+        xlabel('Time [s]')
+        ylabel('Jerk [m/sec^3]')
+        title('Jerk')
+        grid()
+        legend(loc = 'best')
+        xlim(0, time_array[-1]+0.1)
+        ylim(-100,200)
         
     
     return t_arr, v_arr, a_arr, h_arr, m_arr, ADAS_deployment_arr, round(h_arr[-1], 2), round(v_arr[c], 2)
