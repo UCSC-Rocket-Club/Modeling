@@ -56,7 +56,7 @@ def num_solver(thrust_profile, rocket_mass, motor_mass, propellant_mass, time_re
     
     def drag_curve(mi, air_rho, hi, vi, t):
         nDragCoeff = ADAS_drag_times_area[0] #no deployment
-        if t>burn_time-1:
+        if t>burn_time:
             numRootCalc.updateParam(mi, air_rho, apogee_target-hi, vi)
             nDragCoeff = numRootCalc.calculateRoots(1, 0.00001, 10000)
             
